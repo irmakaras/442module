@@ -5,10 +5,11 @@ from module.utils import green, blue, bold, orange
 from iminuit import Minuit
 from iminuit.cost import LeastSquares
 from scipy.stats import chi2
+from scipy.special import factorial
 
 VARIABLES = [x, y, z, t]
 
-def lambdify_string(fstr):
+def sympify_string(fstr):
     f_exp = sympify(fstr)
     free = sorted(f_exp.free_symbols, key=lambda x: x.sort_key())
     vars = [x for x in free if x in VARIABLES]
@@ -56,9 +57,11 @@ class FitFunction1D:
         match function_string:
             case "gaussian":
                 _fstr = "A*exp((x-μ)**2/(-2*σ**2))"
+            case "poisson":
+                _fstr = "A*exp(-λ)*λ**x/factorial(x)"
             case _:
                 _fstr = function_string
-        self.f_exp, self.vars, self.params = lambdify_string(_fstr)
+        self.f_exp, self.vars, self.params = sympify_string(_fstr)
         if len(self.vars) != 1:
             raise ValueError(f"Expected 1D function but got {len(self.vars)}D function! Variables: {self.vars}, Parameters: {self.params}, Acceptable Variables: {VARIABLES}.")
         if initial_parameters is not None:
@@ -72,7 +75,7 @@ class FitFunction1D:
     def set_params(self, _params):
         self.param_values = _params
         self.f_param = self.f_exp.subs(dict(zip(self.params, self.param_values)))
-        self.f_call = lambdify(self.vars, self.f_param, "numpy")
+        self.f_call = lambdify(self.vars, self.f_param, ["numpy", {'factorial': factorial}])
 
 
     def evaluate(self, var, params=None):
@@ -81,7 +84,7 @@ class FitFunction1D:
         return self.f_call(var)
         
 
-    def fit(self, x, y=None, y_err=None, initial_params=None, range=None, bins=None):
+    def fit(self, x, y=None, y_err=None, initial_params=None, range=None, bins=None, limits=None):
         """
         Fits the function to a given dataset. Stores the results in ``fit_results`` property and prints them. If only ``x`` values are given, a histogram fit is done. If ``x``, ``y`` and, ``y_err`` values are given, a regression fit is done.
 
@@ -99,7 +102,8 @@ class FitFunction1D:
                 Interval on the x axis that the fit will be applied to
         ``bins``: int (default=``None``)
                 Only used for histogram fitting. Number of bins that the histogram will be generated on.
-
+        ``limits``: [[min, max]] (default=``None``)
+                Limits of the fitted parameters. ``[[0, None]]`` sets the first parameter to be greater than zero.
         """
         self.fit_results = {}
         print(blue(bold(f"Fitting: {self.f_exp}")))
@@ -120,15 +124,15 @@ class FitFunction1D:
                 _y_err = y_err
             
             print(green(f"Found x, y and y_err values. Fitting for regression."))
-            self.fit_reg(x, y, _y_err, _init_param, range)
+            self.fit_reg(x, y, _y_err, _init_param, range, limits)
         else:
             print(green(f"Found only x values. Fitting for histogram."))
-            self.fit_hist(x, bins, _init_param, range)
+            self.fit_hist(x, bins, _init_param, range, limits)
         self.x_fit = np.linspace(self.fit_range[0], self.fit_range[1], 200)
         self.y_fit = self(self.x_fit)
             
 
-    def fit_reg(self, x_data, y_data, y_err, initial_params, range):
+    def fit_reg(self, x_data, y_data, y_err, initial_params, range, limits):
         if range is not None:
             self.fit_range=range
         else:
@@ -139,10 +143,10 @@ class FitFunction1D:
         self.x_data = x_data[mask]
         self.y_data = y_data[mask]
         self.y_err = y_err[mask]
-        self.curve_fit(self.x_data, self.y_data, self.y_err, initial_params)
+        self.curve_fit(self.x_data, self.y_data, self.y_err, initial_params, limits)
 
 
-    def fit_hist(self, x_data, bins, initial_params, range):
+    def fit_hist(self, x_data, bins, initial_params, range, limits):
         h_data, x_edges = np.histogram(x_data, bins, range=range)
         h_err = np.sqrt(h_data)
 
@@ -161,12 +165,14 @@ class FitFunction1D:
         self.y_data = h_data[mask]
         self.y_err = h_err[mask]
 
-        self.curve_fit(self.x_data, self.y_data, self.y_err, initial_params)
+        self.curve_fit(self.x_data, self.y_data, self.y_err, initial_params, limits)
 
 
-    def curve_fit(self, x_data, y_data, y_err, initial_params):
+    def curve_fit(self, x_data, y_data, y_err, initial_params, limits):
         least_squares = LeastSquares(x_data, y_data, y_err, self.evaluate)
         m = Minuit(least_squares, initial_params, name=[str(p) for p in self.params])
+        if limits is not None:
+            m.limits = limits
         m.migrad()
         m.hesse()
         self.m = m

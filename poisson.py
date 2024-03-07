@@ -6,12 +6,12 @@ from module import FitFunction1D, plot_data, plot_fit, draw_fit_info, style
 plt.style.use(style)
 
 # Generate a random dataset from a normal distribution
-data = np.random.normal(365, 45, 1000)
+data = np.random.poisson(4, 1000)
 bins = 10
 
 # Fit a gaussian function to the data
-f = FitFunction1D("gaussian")
-f.fit(data, bins=bins, initial_params=[5,350,30]) # Here, the order of parameters are [A, μ, σ]
+f = FitFunction1D("A*exp(-λ)*λ**x/factorial(x)")
+f.fit(data, bins=bins, initial_params=[1,3], limits=[[0, None], [0, None]])
 
 # Create a plot
 fig, ax = plt.subplots(figsize=(9,8))
@@ -41,5 +41,5 @@ ax.set_title("I CAN DO HISTOGRAMS TOO!", pad=15)
 ax.set_xlabel("x (Observable)")
 ax.set_ylabel("y (Counts)")
 
-plt.savefig("plots/gaussian", bbox_inches="tight")
+plt.savefig("plots/poisson", bbox_inches="tight")
 plt.show()
