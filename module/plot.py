@@ -52,7 +52,6 @@ def plot_data(x, y=None, x_err=None, y_err=None, **kwargs):
 
     if y is not None:
         ax.errorbar(x, y, xerr=x_err, yerr=y_err, zorder=0, **errorbar_style)
-        ax.set_xlim([np.min(x), np.max(x)])
     else:
         if "bins" in kwargs:
             bins = kwargs.pop("bins")

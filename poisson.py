@@ -11,7 +11,7 @@ bins = 10
 
 # Fit a gaussian function to the data
 f = FitFunction1D("A*exp(-λ)*λ**x/factorial(x)")
-f.fit(data, bins=bins, initial_params=[1,3], limits=[[0, None], [0, None]])
+f.fit(data, bins=bins, initial_params=[1,3])
 
 # Create a plot
 fig, ax = plt.subplots(figsize=(9,8))
