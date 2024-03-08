@@ -127,7 +127,7 @@ def draw_fit_info(functions, loc="upper right", offset=(0,0), fontsize=None, lin
 
         # Expression
         head.append(TextArea(f"f({(f.vars[0])})", textprops=text_properties_tail))
-        tail.append(TextArea(f"$={latex(f.f_exp)}$", textprops=text_properties_tail))
+        tail.append(TextArea(f"$={latex(f.f_repr)}$", textprops=text_properties_tail))
 
         # Chi2
         head.append(TextArea("$\\chi^2$/$n_\\mathrm{{dof}}$", textprops=text_properties_tail))

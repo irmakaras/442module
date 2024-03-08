@@ -5,9 +5,17 @@ from module.utils import green, blue, bold, orange
 from iminuit import Minuit
 from iminuit.cost import LeastSquares
 from scipy.stats import chi2
-from scipy.special import factorial
+from scipy.special import factorial, xlogy, gammaln 
 
 VARIABLES = [x, y, z, t]
+REPLACEMENTS = {'factorial': factorial,
+                "xlogy": xlogy,
+                "gammaln": gammaln}
+
+SPECIALS = {"gaussian": {"f_exp": "A*exp((x-μ)**2/(-2*σ**2))",
+                         "f_repr": "A*exp((x-μ)**2/(-2*σ**2))"},
+            "poisson": {"f_exp": "A*exp(xlogy(x, λ) - gammaln(x + 1) - λ)",
+                        "f_repr": "A*exp(-λ)*λ**x/factorial(x)"}}
 
 def sympify_string(fstr):
     f_exp = sympify(fstr)
@@ -54,28 +62,33 @@ class FitFunction1D:
         ----------
             ``FitFunction1D("a*x + b", [1, 0.5])`` will create a callable function ``x + 0.5``
         """
-        match function_string:
-            case "gaussian":
-                _fstr = "A*exp((x-μ)**2/(-2*σ**2))"
-            case "poisson":
-                _fstr = "A*exp(-λ)*λ**x/factorial(x)"
-            case _:
-                _fstr = function_string
+        if function_string in SPECIALS.keys():
+            _fstr = SPECIALS[function_string]["f_exp"]
+            special = True
+        else:
+            _fstr = function_string
+            special = False
+
         self.f_exp, self.vars, self.params = sympify_string(_fstr)
+
+        if special:
+            self.f_repr, _, _ = sympify_string(SPECIALS[function_string]["f_repr"])
+        else:
+            self.f_repr = self.f_exp
+
         if len(self.vars) != 1:
             raise ValueError(f"Expected 1D function but got {len(self.vars)}D function! Variables: {self.vars}, Parameters: {self.params}, Acceptable Variables: {VARIABLES}.")
         if initial_parameters is not None:
             _init_param = initial_parameters
         else:
             _init_param = [1 for x in self.params]
-        #print(f"Setting initial parameters for {self.f_exp} as {_init_param}")
         self.set_params(_init_param)
 
 
     def set_params(self, _params):
         self.param_values = _params
         self.f_param = self.f_exp.subs(dict(zip(self.params, self.param_values)))
-        self.f_call = lambdify(self.vars, self.f_param, ["numpy", {'factorial': factorial}])
+        self.f_call = lambdify(self.vars, self.f_param, ["numpy", REPLACEMENTS])
 
 
     def evaluate(self, var, params=None):
@@ -106,7 +119,7 @@ class FitFunction1D:
                 Limits of the fitted parameters. ``[[0, None]]`` sets the first parameter to be greater than zero.
         """
         self.fit_results = {}
-        print(blue(bold(f"Fitting: {self.f_exp}")))
+        print(blue(bold(f"Fitting: {self.f_repr}")))
         if initial_params is None:
             _init_param = [1] * len(self.params)
             print(orange(bold(f"No initial guess given, defaulting to {_init_param}. This may cause a bad fit!")))

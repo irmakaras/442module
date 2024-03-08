@@ -10,7 +10,7 @@ data = np.random.poisson(4, 1000)
 bins = 10
 
 # Fit a gaussian function to the data
-f = FitFunction1D("A*exp(-λ)*λ**x/factorial(x)")
+f = FitFunction1D("poisson")
 f.fit(data, bins=bins, initial_params=[1,3])
 
 # Create a plot
