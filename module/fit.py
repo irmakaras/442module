@@ -1,28 +1,47 @@
 from sympy import sympify, lambdify
 from sympy.abc import x, y, z, t
 import numpy as np
-from module.utils import green, blue, bold, orange
+from module.utils import green, blue, bold, orange, red
 from iminuit import Minuit
 from iminuit.cost import LeastSquares
 from scipy.stats import chi2
-from scipy.special import factorial, xlogy, gammaln 
+from scipy.special import factorial, xlogy, gammaln
+from inspect import getfullargspec
 
 VARIABLES = [x, y, z, t]
 REPLACEMENTS = {'factorial': factorial,
                 "xlogy": xlogy,
                 "gammaln": gammaln}
 
-SPECIALS = {"gaussian": {"f_exp": "A*exp((x-μ)**2/(-2*σ**2))",
-                         "f_repr": "A*exp((x-μ)**2/(-2*σ**2))"},
-            "poisson": {"f_exp": "A*exp(xlogy(x, λ) - gammaln(x + 1) - λ)",
-                        "f_repr": "A*exp(-λ)*λ**x/factorial(x)"}}
+SPECIALS = {"gaussian": {"f": "A*exp((x-μ)**2/(-2*σ**2))",
+                         "f_exp": "A*exp((x-μ)**2/(-2*σ**2))"},
+            "poisson": {"f": "A*exp(xlogy(x, λ) - gammaln(x + 1) - λ)",
+                        "f_exp": "A*exp(-λ)*λ**x/factorial(x)"}}
 
-def sympify_string(fstr):
-    f_exp = sympify(fstr)
-    free = sorted(f_exp.free_symbols, key=lambda x: x.sort_key())
+def func_from_func(function):
+    V = [str(x) for x in VARIABLES]
+    args = getfullargspec(function)[0]
+    vars = [x for x in args if x in V]
+    params = [x for x in args if x not in V]
+    return function, vars, params
+
+
+def func_from_string(function):
+    if function in SPECIALS.keys():
+        _fstr = SPECIALS[function]["f"]
+    else:
+        _fstr = function
+    func_expression = sympify(_fstr)
+    free = sorted(func_expression.free_symbols, key=lambda x: x.sort_key())
     vars = [x for x in free if x in VARIABLES]
     params = [x for x in free if x not in VARIABLES]
-    return f_exp, vars, params
+
+    func = lambdify(vars+params, func_expression, ["numpy", REPLACEMENTS])
+    vars = [str(x) for x in vars]
+    params = [str(x) for x in params]
+    if function in SPECIALS.keys():
+        func_expression = sympify(SPECIALS[function]["f_exp"])
+    return func, vars, params, func_expression
 
 ### --------------- FUNCTION CLASSES ---------------
 
@@ -43,152 +62,154 @@ class FitFunction1D:
     ``evaluate`` or ``__call__``: Calls the function with the given values. ``f.evaluate(values)`` and ``f(values)`` are the same.
     """
     
-    def __init__(self, function_string, initial_parameters=None):
+    def __init__(self, function):
         """
         Initializes the instanced based on a string.
 
         Arguments:
         ----------
-        ``function_string``: str
+        ``function``: str or callable
             String of the function. For exponentiation, use ``x**2`` rather than ``x^2``. Acceptable strings are:
 
             - Any parsable string of a mathemathical expression.
-            - ``"gaussian"`` creates a gaussian function with 3 parameters.
+            - ``"gaussian"`` creates a Gaussian pdf with 3 parameters (A, μ, σ).
+            - ``"poisson"`` creates a Poisson pdf with 2 parameters (A, λ).
 
         ``initial_parameters``: list (default=``None``)
             List of initial values for the parameters of the function. If ``None`` all parameters will be initialized to 1.
         
         Example:
         ----------
-            ``FitFunction1D("a*x + b", [1, 0.5])`` will create a callable function ``x + 0.5``
+            ``FitFunction1D("a*x + b")`` will create a callable function ``a*x + b`` with arguments ``(x, a, b)``
         """
-        if function_string in SPECIALS.keys():
-            _fstr = SPECIALS[function_string]["f_exp"]
-            special = True
+        if isinstance(function, str):
+            self.func, self.vars, self.params, self.func_expression = func_from_string(function)
         else:
-            _fstr = function_string
-            special = False
-
-        self.f_exp, self.vars, self.params = sympify_string(_fstr)
-
-        if special:
-            self.f_repr, _, _ = sympify_string(SPECIALS[function_string]["f_repr"])
-        else:
-            self.f_repr = self.f_exp
+            self.func, self.vars, self.params = func_from_func(function)
+            self.func_expression = "Custom Function"
 
         if len(self.vars) != 1:
             raise ValueError(f"Expected 1D function but got {len(self.vars)}D function! Variables: {self.vars}, Parameters: {self.params}, Acceptable Variables: {VARIABLES}.")
-        if initial_parameters is not None:
-            _init_param = initial_parameters
-        else:
-            _init_param = [1 for x in self.params]
-        self.set_params(_init_param)
 
 
-    def set_params(self, _params):
-        self.param_values = _params
-        self.f_param = self.f_exp.subs(dict(zip(self.params, self.param_values)))
-        self.f_call = lambdify(self.vars, self.f_param, ["numpy", REPLACEMENTS])
-
-
-    def evaluate(self, var, params=None):
-        if params is not None:
-            self.set_params(params)
-        return self.f_call(var)
+    def __call__(self, x, params):
+        if isinstance(params, list):
+            y = self.func(x, *params)
+        elif isinstance(params, dict):
+            y = self.func(x, **params)
+        return y
         
 
-    def fit(self, x, y=None, y_err=None, initial_params=None, range=None, bins=None, limits=None):
+    def fit(self, x, y=None, y_err=None, initial_values=None, range=None, limits=None, histogram={}):
         """
         Fits the function to a given dataset. Stores the results in ``fit_results`` property and prints them. If only ``x`` values are given, a histogram fit is done. If ``x``, ``y`` and, ``y_err`` values are given, a regression fit is done.
 
         Arguments:
         ----------
-        ``x``: list
+        ``x``: array
                 x values of the data. If only ``x`` is given, a histogram fit is done.
-        ``y``: list (default=``None``)
+        ``y``: array
                 y values of the data.
-        ``y_err``: list (default=``None``)
+        ``y_err``: array
                 Error of the y values of the data.
-        ``initial_params``: list (default=``None``)
-                List of initial guesses for each parameter. If ``None`` it sets the initial guess for each parameter to 1.
+        ``initial_values``: array or dict (default=``None``)
+                The initial guess for each parameter. If ``None`` it sets the initial guess for each parameter to 1.
         ``range``: [min, max] (default=``None``)
                 Interval on the x axis that the fit will be applied to
         ``bins``: int (default=``None``)
                 Only used for histogram fitting. Number of bins that the histogram will be generated on.
-        ``limits``: [[min, max]] (default=``None``)
-                Limits of the fitted parameters. ``[[0, None]]`` sets the first parameter to be greater than zero.
+        ``limits``: array or dict (default=``None``)
+                Limits of the fitted parameters. ``(0, None)`` sets a parameter to be greater than zero.
         """
         self.fit_results = {}
-        print(blue(bold(f"Fitting: {self.f_repr}")))
-        if initial_params is None:
-            _init_param = [1] * len(self.params)
-            print(orange(bold(f"No initial guess given, defaulting to {_init_param}. This may cause a bad fit!")))
+        print(blue(bold(f"Fitting: {self.func_expression}")))
+
+        # Initial value parsing
+        if initial_values is None:
+            _init_vals = [1] * len(self.params)
+            print(orange(bold(f"No initial value were given, defaulting to {_init_vals}. This may cause a bad fit!")))
         else:
-            if len(initial_params) != len(self.params):
-                raise ValueError(f"Expected {len(self.params)} parameters for initial guess ({self.params}) but got {len(initial_params)} parameters! Initial guess: {initial_params}.")
-            _init_param = initial_params
-        
+            if isinstance(initial_values, list):
+                if len(initial_values) != len(self.params):
+                    raise Exception(red(f"Expected {len(self.params)} parameters for initial guess ({self.params}) but got {len(initial_values)} parameters! Initial guess: {initial_values}."))
+                _init_vals = initial_values
+            elif isinstance(initial_values, dict):
+                _init_vals = [1] * len(self.params)
+                if len(initial_values) != len(self.params):
+                    print(orange(bold(f"Not all initial values were given. This may cause a bad fit!")))
+                for param, value in initial_values.items():
+                    if param not in self.params:
+                        raise Exception(red(f"Parameter '{param}' not found in parameter list {self.params}"))
+                    _init_vals[self.params.index(param)] = value
+        _pv_pairs = {p: v for p, v in zip(self.params, _init_vals)}
+
+        # Data parsing
         if y is not None:
+            # Set _x, _y, _yerr
+            _x = x
+            _y = y
             if y_err is None:
-                raise TypeError(f"y_err must be given for regression!")
+                raise Exception(red(f"y_err must be given for fitting!"))
             elif isinstance(y_err, float) or isinstance(y_err, int):
                 _y_err = y_err * np.ones(x.shape)
             else:
                 _y_err = y_err
-            
-            print(green(f"Found x, y and y_err values. Fitting for regression."))
-            self.fit_reg(x, y, _y_err, _init_param, range, limits)
+            print(green(f"Found x, y and y_err values. Fitting!"))
         else:
-            print(green(f"Found only x values. Fitting for histogram."))
-            self.fit_hist(x, bins, _init_param, range, limits)
-        self.x_fit = np.linspace(self.fit_range[0], self.fit_range[1], 200)
-        self.y_fit = self(self.x_fit)
-            
+            # If no y is given, create a histogram and set _x, _y, _yerr
+            if len(histogram) == 0:
+                raise Exception(f"Either y or histogram parameters must be given for fitting!")
+            else:
+                if isinstance(histogram, dict):
+                    bins = histogram["bins"]
+                    try:
+                        min, max = histogram["min"], histogram["max"]
+                    except:
+                        print(orange(f"Histogram min-max are not given, defaulting to min-max values of the dataset."))
+                        min, max = np.min(x), np.max(x)
+                elif isinstance(histogram, list):
+                    bins = histogram[0]
+                    try:
+                        min, max = histogram[1:2]
+                    except:
+                        print(orange(f"Histogram min-max are not given, defaulting to min-max values of the dataset."))
+                        min, max = np.min(x), np.max(x)
+                else:
+                    raise Exception(f"Histogram options should either be a list or a dictionary!")
+                _y, _x = np.histogram(x, bins, [min, max])
+                _y_err = np.sqrt(_y)
+                _x = _x[:-1] + (_x[1] - _x[0])/2 # Take midpoints of each edge for y values
 
-    def fit_reg(self, x_data, y_data, y_err, initial_params, range, limits):
         if range is not None:
             self.fit_range=range
         else:
-            self.fit_range=[np.min(x_data), np.max(x_data)]
+            self.fit_range=[np.min(_x), np.max(_x)]
 
-        # Cut the data in the range
-        mask = np.where((x_data >= self.fit_range[0]) & (x_data <= self.fit_range[1]))
-        self.x_data = x_data[mask]
-        self.y_data = y_data[mask]
-        self.y_err = y_err[mask]
-        self.curve_fit(self.x_data, self.y_data, self.y_err, initial_params, limits)
+        # Cut the data in the range and remove _y_err = 0 points because they will throw a "zero-division" error
+        mask = np.where((_x >= self.fit_range[0]) & (_x <= self.fit_range[1]) & (_y_err != 0))
+        _x = _x[mask]
+        _y = _y[mask]
+        _y_err = _y_err[mask]
 
-
-    def fit_hist(self, x_data, bins, initial_params, range, limits):
-        h_data, x_edges = np.histogram(x_data, bins, range=range)
-        h_err = np.sqrt(h_data)
-
-        if type(range) != type(None):
-            self.fit_range=range
-        else:
-            self.fit_range=[np.min(x_edges), np.max(x_edges)]
-
-        # Take the midpoints for fitting
-        step = (x_edges[1]-x_edges[0])/2
-        x_edges += step
-
-        # Don't put zeros into the fit because their errors cause zero-division errors.
-        mask = np.where(h_data != 0)
-        self.x_data = x_edges[:-1][mask]
-        self.y_data = h_data[mask]
-        self.y_err = h_err[mask]
-
-        self.curve_fit(self.x_data, self.y_data, self.y_err, initial_params, limits)
-
-
-    def curve_fit(self, x_data, y_data, y_err, initial_params, limits):
-        least_squares = LeastSquares(x_data, y_data, y_err, self.evaluate)
-        m = Minuit(least_squares, initial_params, name=[str(p) for p in self.params])
+        # Fit!
+        least_squares = LeastSquares(_x, _y, _y_err, self.func)
+        m = Minuit(least_squares, **_pv_pairs, name=self.params)
+        self.m = m
+        
+        print(f"Initial values are:")
+        print(_pv_pairs)
+        
         if limits is not None:
-            m.limits = limits
+            if isinstance(limits, list):
+                m.limits = limits
+            elif isinstance(limits, dict):
+                for param, limit in limits.items():
+                    m.limits[param] = limit
+
         m.migrad()
         m.hesse()
-        self.m = m
+        self.values = m.values.to_dict()
+
         self.fit_results["values"] = []
         self.fit_results["errors"] = []
         self.fit_results["chi2"] = m.fval
@@ -201,5 +222,16 @@ class FitFunction1D:
         print(green(bold(f"Results:")))
         print(m.params)
 
-    def __call__(self, var, params=None):
-        return self.evaluate(var, params)
+        self.x_fit = np.linspace(self.fit_range[0], self.fit_range[1], 200)
+        self.y_fit = self(self.x_fit, self.values)
+
+
+
+    def set_expression(self, str, type="sympy"):
+        match type:
+            case "sympy":
+                _exp = sympify(str)
+            case _:
+                _exp = str
+        self.func_expression = _exp
+

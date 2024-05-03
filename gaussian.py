@@ -7,11 +7,11 @@ plt.style.use(style)
 
 # Generate a random dataset from a normal distribution
 data = np.random.normal(365, 45, 1000)
-bins = 10
+bins = 25
 
 # Fit a gaussian function to the data
 f = FitFunction1D("gaussian")
-f.fit(data, bins=bins, initial_params=[5,350,30]) # Here, the order of parameters are [A, μ, σ]
+f.fit(data, initial_values=[5,350,30], histogram=[bins]) # Here, the order of parameters are [A, μ, σ]
 
 # Create a plot
 fig, ax = plt.subplots(figsize=(9,8))
@@ -41,5 +41,5 @@ ax.set_title("I CAN DO HISTOGRAMS TOO!", pad=15)
 ax.set_xlabel("x (Observable)")
 ax.set_ylabel("y (Counts)")
 
-plt.savefig("plots/gaussian", bbox_inches="tight")
+plt.savefig("plots/gaussian.pdf", bbox_inches="tight")
 plt.show()

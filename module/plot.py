@@ -43,20 +43,21 @@ def plot_data(x, y=None, x_err=None, y_err=None, **kwargs):
     if "errorbar_style" in kwargs:
         errorbar_style = kwargs.pop("errorbar_style")
     else:
-        errorbar_style = dict(marker= "",
-                    capsize=    3,
-                    color=      "black",
-                    linestyle=  "",
-                    label=      "Error",
-                    elinewidth= 2)
+        errorbar_style = dict(marker= ".", capsize=3, color="black", linestyle="", elinewidth=2, label="Data")
 
     if y is not None:
         ax.errorbar(x, y, xerr=x_err, yerr=y_err, zorder=0, **errorbar_style)
     else:
         if "bins" in kwargs:
             bins = kwargs.pop("bins")
+        
         if "histogram_style" in kwargs:
             histogram_style = kwargs.pop("histogram_style")
+        else:
+            histogram_style = dict(fill=True, label="Data", color="green")
+        
+        if "data" in errorbar_style.get("label", "").lower():
+            errorbar_style["label"] = "Error"
         hist, edges = np.histogram(x, bins)
         ax.stairs(hist, edges, **histogram_style)
         ax.errorbar(edges[:-1] + (edges[1]-edges[0])/2, hist, yerr=np.sqrt(hist), zorder=1, **errorbar_style)
@@ -81,6 +82,8 @@ def plot_fit(functions, **kwargs):
             fit_style = [fit_style]
         if len(fit_style) != len(_fs) and len(fit_style) != 1:
             raise ValueError(f"fit_style should either be the same length as the functions list or a single style for all functions! Expected {len(_fs)} but given {len(fit_style)}.")
+    else:
+        fit_style = [dict(label="Fit", linestyle="-", linewidth=3, color="Red")]
         
     for f in _fs:
         if not isinstance(f, FitFunction1D):
@@ -126,8 +129,13 @@ def draw_fit_info(functions, loc="upper right", offset=(0,0), fontsize=None, lin
         title = TextArea(f"Fit {_fs.index(f)+1 if len(_fs) > 1 else ''}", textprops=dict(fontsize=fontsize, horizontalalignment="left", fontweight="bold"))
 
         # Expression
-        head.append(TextArea(f"f({(f.vars[0])})", textprops=text_properties_tail))
-        tail.append(TextArea(f"$={latex(f.f_repr)}$", textprops=text_properties_tail))
+        if f.func_expression == "Custom Function":
+            head.append(TextArea(f"{f.func_expression}", textprops=text_properties_tail))
+            tail.append(TextArea(f"", textprops=text_properties_tail))
+        else:
+            head.append(TextArea(f"f({(f.vars[0])})", textprops=text_properties_tail))
+            tail.append(TextArea(f"$={latex(f.func_expression)}$", textprops=text_properties_tail))
+            longest = len(str(f.func_expression))-25
 
         # Chi2
         head.append(TextArea("$\\chi^2$/$n_\\mathrm{{dof}}$", textprops=text_properties_tail))

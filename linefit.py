@@ -5,16 +5,20 @@ from module import FitFunction1D, plot_data, plot_fit, draw_fit_info, style
 
 plt.style.use(style)
 
-# Import thedata
+# Import the data
 data = pd.read_csv("data/qm-data.txt", sep="\t", header=None)
 x = data[0].to_numpy()
 y = data[1].to_numpy()
 x_err = data[2].to_numpy()
 y_err = data[3].to_numpy()
 
-# Fit a function to the data
-f = FitFunction1D("a*x + b")
-f.fit(x, y, y_err, initial_params=[1, 1])
+# Example of defining a custom function
+def my_linear_function(x, α, β):
+    return α*x+β
+
+f = FitFunction1D(my_linear_function)
+f.set_expression("α*x+β")
+f.fit(x, y, y_err, initial_values=[1, 1])
 
 # Create a plot
 fig, axes = plt.subplots(figsize=(7,7))
@@ -43,5 +47,5 @@ axes.set_title("An example of a colorful line fit", pad=10)
 axes.set_xlabel("x (Observable 1)")
 axes.set_ylabel("y (Observable 2)")
 
-plt.savefig("plots/linefit", bbox_inches="tight")
+plt.savefig("plots/linefit.pdf", bbox_inches="tight")
 plt.show()

@@ -7,11 +7,11 @@ plt.style.use(style)
 
 # Generate a random dataset from a normal distribution
 data = np.random.poisson(4, 1000)
-bins = 10
+bins = 11
 
 # Fit a gaussian function to the data
 f = FitFunction1D("poisson")
-f.fit(data, bins=bins, initial_params=[1,3])
+f.fit(data, initial_values=[1,3], histogram=[bins])
 
 # Create a plot
 fig, ax = plt.subplots(figsize=(9,8))
@@ -41,5 +41,5 @@ ax.set_title("I CAN DO HISTOGRAMS TOO!", pad=15)
 ax.set_xlabel("x (Observable)")
 ax.set_ylabel("y (Counts)")
 
-plt.savefig("plots/poisson", bbox_inches="tight")
+plt.savefig("plots/poisson.pdf", bbox_inches="tight")
 plt.show()

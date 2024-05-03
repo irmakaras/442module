@@ -13,10 +13,10 @@ data_y_err = 0.0001
 
 # ----- Fit some functions to the data in different ranges
 f1 = FitFunction1D("a*exp(b*x)*sin(c*x+d)+e")
-f1.fit(data_x, data_y, data_y_err, initial_params=[0.31, -0.002, 0.029, 0.8, 0.001], range=[2600, 4700])
+f1.fit(data_x, data_y, data_y_err, initial_values=[0.31, -0.002, 0.029, 0.8, 0.001], range=[2600, 4700])
 
 f2 = FitFunction1D("a*sin(c*x+d)+e")
-f2.fit(data_x, data_y, data_y_err, initial_params=[0.31, 0.029, 0.8, 0.001], range=[1995,2550])
+f2.fit(data_x, data_y, data_y_err, initial_values=[0.31, 0.029, 0.8, 0.001], range=[1995,2550])
 
 # ----- Create a plot
 fig, ax = plt.subplots(figsize=(12,8))
@@ -51,5 +51,5 @@ ax.set_title("Cavendish Torsion Balance")
 ax.set_xlabel("Time (s)")
 ax.set_ylabel("Potential (V)")
 
-plt.savefig("plots/multiplefits", bbox_inches="tight")
+plt.savefig("plots/multiplefits.pdf", bbox_inches="tight")
 plt.show()
